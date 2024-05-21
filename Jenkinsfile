@@ -18,14 +18,11 @@ pipeline {
                 volumeMounts:
                 - name: docker-socket
                   mountPath: /var/run/docker.sock
-              - name: node
-                image: node:14
+              - name: kubectl
+                image: bitnami/kubectl:latest
                 command:
                 - cat
                 tty: true
-                volumeMounts:
-                - name: docker-socket
-                  mountPath: /var/run/docker.sock
               volumes:
               - name: docker-socket
                 hostPath:
@@ -36,14 +33,17 @@ pipeline {
     }
     environment {
         GIT_CREDENTIALS_ID = 'git-token'
-        DOCKER_HUB_REPO = 'heebin00/awsfront' // 도커 허브 레포 이름을 직접 지정
+        DOCKER_HUB_REPO = 'heebin00/awsfront2' // 도커 허브 레포 이름을 직접 지정
+        KUBECONFIG_CREDENTIALS_ID = 'kubeconfig' // Kubeconfig 파일의 Jenkins credentials ID
+        SLACK_CHANNEL = '#deploy-noti'
+        SLACK_CREDENTIAL_ID = 'slack-token'
     }
     
     stages {
         stage('git clone') {
             steps {
                 container('jnlp') {
-                    git credentialsId: env.GIT_CREDENTIALS_ID, branch: 'main', url: 'https://github.com/hee-bin/frontend-cicd-test.git'
+                    git credentialsId: env.GIT_CREDENTIALS_ID, branch: 'main', url: 'https://github.com/hee-bin/jenkins-front-cicd.git'
                 }
             }
         }
@@ -71,6 +71,36 @@ pipeline {
                         }
                     }
                 }
+            }
+        }
+
+        stage('Deploy to Kubernetes') {
+            steps {
+                container('kubectl') {
+                    script {
+                        withCredentials([file(credentialsId: env.KUBECONFIG_CREDENTIALS_ID, variable: 'KUBECONFIG')]) {
+                            sh 'kubectl apply -f k8s/deployment.yml'
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            script {
+                slackSend(channel: env.SLACK_CHANNEL, message: "Build ${currentBuild.fullDisplayName} finished with status: ${currentBuild.currentResult}")
+            }
+        }
+        success {
+            script {
+                slackSend(channel: env.SLACK_CHANNEL, message: "Build ${currentBuild.fullDisplayName} succeeded")
+            }
+        }
+        failure {
+            script {
+                slackSend(channel: env.SLACK_CHANNEL, message: "Build ${currentBuild.fullDisplayName} failed")
             }
         }
     }
