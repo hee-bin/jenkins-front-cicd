@@ -39,7 +39,7 @@ pipeline {
     }
     environment {
         GIT_CREDENTIALS_ID = 'git-token'
-        DOCKER_HUB_REPO = 'heebin00/awsfront2' // 도커 허브 레포 이름을 직접 지정
+        DOCKER_HUB_REPO = 'heebin00/awsfront2'
         SLACK_CHANNEL = '#일반'
         SLACK_CREDENTIAL_ID = 'slack-token'
         KUBECONFIG_PATH = '/root/.kube/config'
@@ -49,7 +49,7 @@ pipeline {
         stage('Clone Repository') {
             steps {
                 container('jnlp') {
-                    git credentialsId: env.GIT_CREDENTIALS_ID, branch: 'main', url: 'https://github.com/hee-bin/jenkins-front-cicd.git'
+                    git credentialsId: env.GIT_CREDENTIALS_ID, branch: 'main', url: 'https://github.com/hee-bin/frontend-cicd-test.git'
                 }
             }
         }
@@ -85,7 +85,12 @@ pipeline {
                 container('kubectl') {
                     script {
                         withEnv(["KUBECONFIG=${env.KUBECONFIG_PATH}"]) {
-                            sh 'kubectl set image deployment/frontend frontend=${DOCKER_HUB_REPO}:${env.BUILD_ID} --record'
+                            def deploymentExists = sh(script: 'kubectl get deployment frontend', returnStatus: true) == 0
+                            if (deploymentExists) {
+                                sh 'kubectl set image deployment/frontend frontend=${DOCKER_HUB_REPO}:${env.BUILD_ID} --record'
+                            } else {
+                                sh 'kubectl apply -f test.yml'
+                            }
                         }
                     }
                 }
