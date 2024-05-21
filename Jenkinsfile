@@ -19,28 +19,34 @@ pipeline {
                 - name: docker-socket
                   mountPath: /var/run/docker.sock
               - name: kubectl
-                image: bitnami/kubectl:latest
+                image: lachlanevenson/k8s-kubectl:latest
                 command:
                 - cat
                 tty: true
+                volumeMounts:
+                - name: kube-config
+                  mountPath: /root/.kube
               volumes:
               - name: docker-socket
                 hostPath:
                   path: /var/run/docker.sock
                   type: Socket
+              - name: kube-config
+                configMap:
+                  name: kube-config
             """
         }
     }
     environment {
         GIT_CREDENTIALS_ID = 'git-token'
         DOCKER_HUB_REPO = 'heebin00/awsfront2' // 도커 허브 레포 이름을 직접 지정
-        KUBECONFIG_CREDENTIALS_ID = 'kubeconfig' // Kubeconfig 파일의 Jenkins credentials ID
-        SLACK_CHANNEL = '#deploy-noti'
+        SLACK_CHANNEL = '#일반'
         SLACK_CREDENTIAL_ID = 'slack-token'
+        KUBECONFIG_PATH = '/root/.kube/config'
     }
     
     stages {
-        stage('git clone') {
+        stage('Clone Repository') {
             steps {
                 container('jnlp') {
                     git credentialsId: env.GIT_CREDENTIALS_ID, branch: 'main', url: 'https://github.com/hee-bin/jenkins-front-cicd.git'
@@ -52,7 +58,7 @@ pipeline {
             steps {
                 container('docker') {
                     script {
-                        def customImage = docker.build("kube-employment-frontend:${env.BUILD_ID}")
+                        def customImage = docker.build("${DOCKER_HUB_REPO}:${env.BUILD_ID}")
                     }
                 }
             }
@@ -64,22 +70,22 @@ pipeline {
                     script {
                         withCredentials([usernamePassword(credentialsId: 'dockerHub-token', usernameVariable: 'DOCKERHUB_USER', passwordVariable: 'DOCKERHUB_PASS')]) {
                             sh "echo ${DOCKERHUB_PASS} | docker login -u ${DOCKERHUB_USER} --password-stdin"
-                            sh "docker tag kube-employment-frontend:${env.BUILD_ID} ${DOCKER_HUB_REPO}:${env.BUILD_ID}"
+                            sh "docker tag ${DOCKER_HUB_REPO}:${env.BUILD_ID} ${DOCKER_HUB_REPO}:${env.BUILD_ID}"
                             sh "docker push ${DOCKER_HUB_REPO}:${env.BUILD_ID}"
-                            sh "docker tag kube-employment-frontend:${env.BUILD_ID} ${DOCKER_HUB_REPO}:latest"
+                            sh "docker tag ${DOCKER_HUB_REPO}:${env.BUILD_ID} ${DOCKER_HUB_REPO}:latest"
                             sh "docker push ${DOCKER_HUB_REPO}:latest"
                         }
                     }
                 }
             }
         }
-
+        
         stage('Deploy to Kubernetes') {
             steps {
                 container('kubectl') {
                     script {
-                        withCredentials([file(credentialsId: env.KUBECONFIG_CREDENTIALS_ID, variable: 'KUBECONFIG')]) {
-                            sh 'kubectl apply -f k8s/deployment.yml'
+                        withEnv(["KUBECONFIG=${env.KUBECONFIG_PATH}"]) {
+                            sh 'kubectl set image deployment/frontend frontend=${DOCKER_HUB_REPO}:${env.BUILD_ID} --record'
                         }
                     }
                 }
