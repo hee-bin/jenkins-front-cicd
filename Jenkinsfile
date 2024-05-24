@@ -39,7 +39,7 @@ pipeline {
     }
     environment {
         GIT_CREDENTIALS_ID = 'git-token'
-        DOCKER_HUB_REPO = 'heebin00/awsfront2'
+        DOCKER_HUB_REPO = 'heebin00/awsfront'
         SLACK_CHANNEL = '#cicd-alarm-test'
         SLACK_CREDENTIAL_ID = 'slack-token'
         KUBECONFIG_PATH = '/root/.kube/config'
